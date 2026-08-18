@@ -91,6 +91,9 @@ public:
         else if (mode == "FT4") {
             ft4Preds.push_back(pred);
         }
+        else if (mode == "FT2") {
+            ft2Preds.push_back(pred);
+        }
         else if (mode == "JT65") {
             s60sPreds.push_back(pred);
         }
@@ -135,6 +138,7 @@ public:
 
     std::vector<std::shared_ptr<SyncPredicate>> ft8Preds;
     std::vector<std::shared_ptr<SyncPredicate>> ft4Preds;
+    std::vector<std::shared_ptr<SyncPredicate>> ft2Preds;
     std::vector<std::shared_ptr<SyncPredicate>> q65_30Preds;
     std::vector<std::shared_ptr<SyncPredicate>> s60sPreds;
     std::vector<std::shared_ptr<SyncPredicate>> s120sPreds;
