@@ -39,11 +39,12 @@ along with CWSL_DIGI. If not, see < https://www.gnu.org/licenses/>.
 # pragma comment(lib, "ws2_32")
 
 static const std::string PROGRAM_NAME = "CWSL_DIGI";
-static const std::string PROGRAM_VERSION = "0.88";
+static const std::string PROGRAM_VERSION = "0.88-ft2exp";
 
 constexpr float Q65_30_PERIOD = 30.0f;
 constexpr float FT8_PERIOD = 15.0f;
 constexpr float FT4_PERIOD = 7.5f;
+constexpr float FT2_PERIOD = 3.75f; // experimental
 constexpr float WSPR_PERIOD = 120.0f;
 constexpr float JT65_PERIOD = 60.0f;
 constexpr float JS8_PERIOD = 15.0f;
@@ -70,6 +71,9 @@ static inline float getRXPeriod(const std::string& mode) {
     }
     else if (mode == "FT4") {
         return FT4_PERIOD;
+    }
+    else if (mode == "FT2") {
+        return FT2_PERIOD;
     }
     else if (mode == "WSPR") {
         return WSPR_PERIOD;
