@@ -2,6 +2,18 @@
 
 This branch is a **local experiment**. It is not a pull request against alexranaldi/CWSL_DIGI.
 
+## How to finish the source changes (no pasting)
+
+Headers are already committed. The remaining hunks are in `experimental-ft2.patch`.
+From a clone of this branch:
+
+```
+git checkout experimental-ft2
+git apply experimental-ft2.patch
+```
+
+That updates `source/CWSL_DIGI.cpp`, `source/DecoderPool.hpp`, and `source/OutputHandler.cpp` in one step. You do not copy/paste diffs.
+
 ## What this does
 
 Adds a decoder mode string `FT2`:
@@ -34,7 +46,7 @@ Use USB dial frequencies your chosen software actually uses.
 
 ## jt9 flags (starting guess)
 
-This patch invokes jt9 like FT4 (`-5`) and sets `ntrperiod` to 4 (struct field is an int).
+The code invokes jt9 like FT4 (`-5`) and sets `ntrperiod` to 4 (struct field is an int).
 If your Improved/MSHV jt9 needs a different switch, change `source/DecoderPool.hpp`.
 
 If shared-memory decode fails, set:
