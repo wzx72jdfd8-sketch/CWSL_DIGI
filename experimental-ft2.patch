@@ -1,0 +1,134 @@
+Apply on this branch after the already-committed header/notes changes:
+
+  git apply experimental-ft2.patch
+
+Or copy the hunks by hand. Do not open a PR against alexranaldi/CWSL_DIGI.
+
+--- a/source/CWSL_DIGI.cpp
++++ b/source/CWSL_DIGI.cpp
+@@ waitForTimeFT4, after the function ends
++static inline void waitForTimeFT2(std::shared_ptr<ScreenPrinter> printer, std::vector<std::shared_ptr<SyncPredicate>>& preds) {
++    SYSTEMTIME time;
++    int goBucket = -1;
++    bool go = false;
++    while (!syncThreadTerminateFlag) {
++        try {
++            GetSystemTime(&time);
++            const WORD s = time.wSecond;
++            const WORD ms = time.wMilliseconds;
++            int bucket = -1;
++            // 16 slots/minute at 3.75 s: 0, 3.75, 7.50, 11.25, ...
++            if ((s % 15 == 0) && ms < 200) {
++                bucket = s * 1000;
++            }
++            else if ((s == 3 || s == 18 || s == 33 || s == 48) && ms >= 750) {
++                bucket = s * 1000 + 750;
++            }
++            else if ((s == 7 || s == 22 || s == 37 || s == 52) && ms >= 500) {
++                bucket = s * 1000 + 500;
++            }
++            else if ((s == 11 || s == 26 || s == 41 || s == 56) && ms >= 250) {
++                bucket = s * 1000 + 250;
++            }
++            if (go && bucket == goBucket) {
++                std::this_thread::sleep_for(std::chrono::milliseconds(MAX_SLEEP_MS));
++                continue;
++            }
++            go = (bucket != -1);
++            if (go) {
++                printer->print("Beginning FT2 interval...", LOG_LEVEL::DEBUG);
++                goBucket = bucket;
++                for (size_t k = 0; k < preds.size(); ++k) {
++                    preds[k]->store(true);
++                }
++            }
++            else {
++                std::this_thread::sleep_for(std::chrono::milliseconds(MIN_SLEEP_MS));
++            }
++        }
++        catch (const std::exception& e) {
++            printer->print("waitForTimeFT2", e);
++        }
++    }
++    printer->debug("FT2 Synchronization thread exiting");
++}
+
+@@ decoder counts
+     int numFT4Decoders = 0;
+     int numFT8Decoders = 0;
++    int numFT2Decoders = 0;
+
+@@ mode parse
+             if (mode == "FT4") {
+                 numFT4Decoders++;
+             }
++            else if (mode == "FT2") {
++                numFT2Decoders++;
++            }
+             else if (mode == "FT8") {
+
+@@ decoder burden
+-        const float nd1 = static_cast<float>(numFT4Decoders + numFT8Decoders + numQ65_30Decoders + numJS8Decoders) * (1.0f/5.0f);
++        const float nd1 = static_cast<float>(numFT4Decoders + numFT8Decoders + numFT2Decoders + numQ65_30Decoders + numJS8Decoders) * (1.0f/5.0f);
+
+@@ threads after ft4SignalThread
++    std::thread ft2SignalThread;
++    if (numFT2Decoders) {
++        ft2SignalThread = std::thread(&waitForTimeFT2, printer, std::ref(preds.ft2Preds));
++        ft2SignalThread.detach();
++    }
+
+--- a/source/DecoderPool.hpp
++++ b/source/DecoderPool.hpp
+@@ shmem params after FT4 block
+         else if (item.mode == "FT4") {
+             dec_data->params.nmode = 5;
+             dec_data->params.ntrperiod = 7.5; // s
+             dec_data->params.napwid = 80;
+             dec_data->params.nzhsym = 0;
+         }
++        else if (item.mode == "FT2") {
++            // Experimental: same 77-bit family as FT4. Requires a jt9 that knows FT2.
++            dec_data->params.nmode = 5;
++            dec_data->params.ntrperiod = 4; // int field; 3.75 s rounded
++            dec_data->params.napwid = 80;
++            dec_data->params.nzhsym = 0;
++        }
+
+@@ CreateProcess modeOp after FT4
+         else if ("FT4" == item.mode) {
+             modeOp += "-5 -m " + std::to_string(numjt9threads) + " ";
+         }
++        else if ("FT2" == item.mode) {
++            modeOp += "-5 -m " + std::to_string(numjt9threads) + " ";
++        }
+
+@@ decodeUsingFile FT8/FT4 test
+-        if (("FT8" == item.mode) || ("FT4" == item.mode)) {
++        if (("FT8" == item.mode) || ("FT4" == item.mode) || ("FT2" == item.mode)) {
+             appName = "jt9.exe";
+             if ("FT8" == item.mode) {
+                 modeOp += "-8 -m " + std::to_string(numjt9threads) + " -d " + std::to_string(decodedepth) + " -w 1 -H " + std::to_string(highestDecodeFreq) + " ";
+             }
+             else if ("FT4" == item.mode) {
+                 modeOp += "-5 -m " + std::to_string(numjt9threads) + " -d " + std::to_string(decodedepth) + " -w 1 -H " + std::to_string(highestDecodeFreq) + " ";
+             }
++            else if ("FT2" == item.mode) {
++                modeOp += "-5 -m " + std::to_string(numjt9threads) + " -d " + std::to_string(decodedepth) + " -w 1 -H " + std::to_string(highestDecodeFreq) + " ";
++            }
+
+--- a/source/OutputHandler.cpp
++++ b/source/OutputHandler.cpp
+@@ processingLoop
+-            else if (item.mode == "FT4" || item.mode == "FT8") {
++            else if (item.mode == "FT4" || item.mode == "FT8" || item.mode == "FT2") {
+
+@@ parseOutputFT4FT8 decode symbol
+-            if (line.at(21) != '~' && line.at(21) != '+') {
+-                screenPrinter->debug("Skipping line because character 21 is not a ~ or +: " + line);
++            if (line.at(21) != '~' && line.at(21) != '+' && line.at(21) != '*') {
++                screenPrinter->debug("Skipping line because character 21 is not a ~, + or *: " + line);
+
+@@ RBN
+-        if ((mode == "FT8" || mode == "FT4") && rbn) {
++        if ((mode == "FT8" || mode == "FT4" || mode == "FT2") && rbn) {
