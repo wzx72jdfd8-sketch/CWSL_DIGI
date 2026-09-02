@@ -1,12 +1,11 @@
-Apply on this branch after the already-committed header/notes changes:
-
-  git apply experimental-ft2.patch
-
-Or copy the hunks by hand. Do not open a PR against alexranaldi/CWSL_DIGI.
-
 --- a/source/CWSL_DIGI.cpp
 +++ b/source/CWSL_DIGI.cpp
-@@ waitForTimeFT4, after the function ends
+@@ -448,6 +448,52 @@
+         }
+     } // while
+     printer->debug("FT4 Synchronization thread exiting");
++}
++
 +static inline void waitForTimeFT2(std::shared_ptr<ScreenPrinter> printer, std::vector<std::shared_ptr<SyncPredicate>>& preds) {
 +    SYSTEMTIME time;
 +    int goBucket = -1;
@@ -51,14 +50,18 @@ Or copy the hunks by hand. Do not open a PR against alexranaldi/CWSL_DIGI.
 +        }
 +    }
 +    printer->debug("FT2 Synchronization thread exiting");
-+}
-
-@@ decoder counts
+ }
+ 
+ 
+@@ -713,6 +759,7 @@
+ 
      int numFT4Decoders = 0;
      int numFT8Decoders = 0;
 +    int numFT2Decoders = 0;
-
-@@ mode parse
+     int numJS8Decoders = 0;
+     int numWSPRDecoders = 0;
+     int numQ65_30Decoders = 0;
+@@ -744,6 +791,9 @@
              if (mode == "FT4") {
                  numFT4Decoders++;
              }
@@ -66,44 +69,61 @@ Or copy the hunks by hand. Do not open a PR against alexranaldi/CWSL_DIGI.
 +                numFT2Decoders++;
 +            }
              else if (mode == "FT8") {
-
-@@ decoder burden
--        const float nd1 = static_cast<float>(numFT4Decoders + numFT8Decoders + numQ65_30Decoders + numJS8Decoders) * (1.0f/5.0f);
-+        const float nd1 = static_cast<float>(numFT4Decoders + numFT8Decoders + numFT2Decoders + numQ65_30Decoders + numJS8Decoders) * (1.0f/5.0f);
-
-@@ threads after ft4SignalThread
+                 numFT8Decoders++;
+             }
+@@ -858,7 +908,7 @@
+             decoderburden = vm["wsjtx.decoderburden"].as<float>();
+             printer->print("Decoder Burden specified as: " + std::to_string(decoderburden));
+         }
+-        const float nd1 = static_cast<float>(numFT4Decoders + numFT8Decoders + numQ65_30Decoders + numJS8Decoders) * (1.0f/5.0f); // 1 per 5 ft4/ft8/Q65/JS8
++        const float nd1 = static_cast<float>(numFT4Decoders + numFT8Decoders + numFT2Decoders + numQ65_30Decoders + numJS8Decoders) * (1.0f/5.0f); // 1 per 5 ft4/ft8/Q65/JS8
+         const float nd2 = static_cast<float>(numWSPRDecoders) * (1.0f/3.0f); // 1 per 3 wspr
+         const float nd3 = static_cast<float>(numJT65Decoders) * (1.0f / 3.0f); // 1 per 3 JT-65
+         const float nd4 = static_cast<float>(numFST4WDecoders) * (1.0f / 3.0f); // 1 per 3 FST4W
+@@ -1141,6 +1191,12 @@
+     if (numFT4Decoders) {
+         ft4SignalThread = std::thread(&waitForTimeFT4, printer, std::ref(preds.ft4Preds));
+         ft4SignalThread.detach();
++    }
++
 +    std::thread ft2SignalThread;
 +    if (numFT2Decoders) {
 +        ft2SignalThread = std::thread(&waitForTimeFT2, printer, std::ref(preds.ft2Preds));
 +        ft2SignalThread.detach();
-+    }
-
+     }
+ 
+     std::thread signal60sThread;
 --- a/source/DecoderPool.hpp
 +++ b/source/DecoderPool.hpp
-@@ shmem params after FT4 block
-         else if (item.mode == "FT4") {
-             dec_data->params.nmode = 5;
-             dec_data->params.ntrperiod = 7.5; // s
+@@ -475,6 +475,13 @@
              dec_data->params.napwid = 80;
              dec_data->params.nzhsym = 0;
          }
 +        else if (item.mode == "FT2") {
-+            // Experimental: same 77-bit family as FT4. Requires a jt9 that knows FT2.
++            // WSJT-X Improved 3.1+: 77-bit FT2. nmode=5 family; ntrperiod int field rounded to 4.
 +            dec_data->params.nmode = 5;
-+            dec_data->params.ntrperiod = 4; // int field; 3.75 s rounded
++            dec_data->params.ntrperiod = 4;
 +            dec_data->params.napwid = 80;
 +            dec_data->params.nzhsym = 0;
 +        }
-
-@@ CreateProcess modeOp after FT4
-         else if ("FT4" == item.mode) {
-             modeOp += "-5 -m " + std::to_string(numjt9threads) + " ";
+         else if (item.mode == "Q65-30") {
+             dec_data->params.nmode = 66; // mainwindow.cpp 3144
+             dec_data->params.ntxmode = 66; // mainwindow.cpp 3144
+@@ -636,6 +643,10 @@
+             modeOp += "-8 -m " + std::to_string(numjt9threads) + " ";
          }
-+        else if ("FT2" == item.mode) {
+         else if ("FT4" == item.mode) {
 +            modeOp += "-5 -m " + std::to_string(numjt9threads) + " ";
 +        }
-
-@@ decodeUsingFile FT8/FT4 test
++        else if ("FT2" == item.mode) {
++            // Improved jt9: start with FT4 -5; if Improved adds a dedicated flag, change here.
+             modeOp += "-5 -m " + std::to_string(numjt9threads) + " ";
+         }
+         else if ("Q65-30" == item.mode) {
+@@ -1004,12 +1015,15 @@
+ 
+         std::string appName = "";
+         std::string modeOp = " ";
 -        if (("FT8" == item.mode) || ("FT4" == item.mode)) {
 +        if (("FT8" == item.mode) || ("FT4" == item.mode) || ("FT2" == item.mode)) {
              appName = "jt9.exe";
@@ -111,24 +131,50 @@ Or copy the hunks by hand. Do not open a PR against alexranaldi/CWSL_DIGI.
                  modeOp += "-8 -m " + std::to_string(numjt9threads) + " -d " + std::to_string(decodedepth) + " -w 1 -H " + std::to_string(highestDecodeFreq) + " ";
              }
              else if ("FT4" == item.mode) {
-                 modeOp += "-5 -m " + std::to_string(numjt9threads) + " -d " + std::to_string(decodedepth) + " -w 1 -H " + std::to_string(highestDecodeFreq) + " ";
-             }
-+            else if ("FT2" == item.mode) {
 +                modeOp += "-5 -m " + std::to_string(numjt9threads) + " -d " + std::to_string(decodedepth) + " -w 1 -H " + std::to_string(highestDecodeFreq) + " ";
 +            }
-
++            else if ("FT2" == item.mode) {
+                 modeOp += "-5 -m " + std::to_string(numjt9threads) + " -d " + std::to_string(decodedepth) + " -w 1 -H " + std::to_string(highestDecodeFreq) + " ";
+             }
+             else {
 --- a/source/OutputHandler.cpp
 +++ b/source/OutputHandler.cpp
-@@ processingLoop
+@@ -90,7 +90,7 @@
+                 screenPrinter->debug("OutputHandler processing JS8 item, instanceid=" + std::to_string(item.instanceId));
+                 parseOutputJS8(item.output, item.epochTime, item.mode, item.baseFreq, item.instanceId);
+             }
 -            else if (item.mode == "FT4" || item.mode == "FT8") {
 +            else if (item.mode == "FT4" || item.mode == "FT8" || item.mode == "FT2") {
-
-@@ parseOutputFT4FT8 decode symbol
+                 try {
+                     parseOutputFT4FT8(item.output, item.epochTime, item.mode, item.baseFreq, item.instanceId);
+                 }
+@@ -557,8 +557,8 @@
+             }
+ 
+             // 21 is always a ~ or a +, depending on mode
 -            if (line.at(21) != '~' && line.at(21) != '+') {
 -                screenPrinter->debug("Skipping line because character 21 is not a ~ or +: " + line);
 +            if (line.at(21) != '~' && line.at(21) != '+' && line.at(21) != '*') {
 +                screenPrinter->debug("Skipping line because character 21 is not a ~, + or *: " + line);
-
-@@ RBN
+                 continue;
+             }
+ 
+@@ -744,8 +744,8 @@
+             }
+ 
+             // 21 is always :
+-            if (line.at(21) != '~' && line.at(21) != '+') {
+-                screenPrinter->debug("Skipping line because character 21 is not a ~ or +: " + line);
++            if (line.at(21) != '~' && line.at(21) != '+' && line.at(21) != '*') {
++                screenPrinter->debug("Skipping line because character 21 is not a ~, + or *: " + line);
+                 continue;
+             }
+ 
+@@ -943,7 +943,7 @@
+         }
+ 
+         // Let RBN handle messages on its own - no preprocessing/checking, but only FT4/FT8
 -        if ((mode == "FT8" || mode == "FT4") && rbn) {
 +        if ((mode == "FT8" || mode == "FT4" || mode == "FT2") && rbn) {
+             rbn->handle(freq, baseFreq, snr, msg, mode);
+         }
