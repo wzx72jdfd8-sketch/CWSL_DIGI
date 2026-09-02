@@ -1,0 +1,107 @@
+--- a/source/OutputHandler.cpp
++++ b/source/OutputHandler.cpp
+@@ -90,7 +90,7 @@
+                 screenPrinter->debug("OutputHandler processing JS8 item, instanceid=" + std::to_string(item.instanceId));
+                 parseOutputJS8(item.output, item.epochTime, item.mode, item.baseFreq, item.instanceId);
+             }
+-            else if (item.mode == "FT4" || item.mode == "FT8") {
++            else if (item.mode == "FT4" || item.mode == "FT8" || item.mode == "FT2") {
+                 try {
+                     parseOutputFT4FT8(item.output, item.epochTime, item.mode, item.baseFreq, item.instanceId);
+                 }
+@@ -426,27 +426,46 @@
+             auto rawText = QString::fromStdString(line).remove(QRegularExpression{"\\r|\\n"});
+ 
+-            DecodedText decodedtext{ rawText, false, "FN03ng"};
++            // JS8Call 2.3 removed DecodedText(QString line, bool, QString grid).
++            // Parse classic js8.exe text columns, then use DecodedText(frame, bits, submode).
++            const int padding = rawText.indexOf(QLatin1Char(' ')) > 4 ? 2 : 0;
++            if (rawText.size() < 22 + padding) {
++                screenPrinter->debug("Skipping short JS8 line: " + line);
++                continue;
++            }
++
++            const int snrFromLine = rawText.mid(5 + padding, 4).trimmed().toInt();
++            const int freqOffsetFromLine = rawText.mid(14 + padding, 4).trimmed().toInt();
++            const QString modeField = rawText.mid(19 + padding, 3).trimmed();
++            int submode = 0;
++            if (!modeField.isEmpty()) {
++                const ushort ch = modeField.at(0).unicode();
++                if (ch >= 'A' && ch <= 'Z') {
++                    submode = static_cast<int>(ch - 'A');
++                }
++            }
++            const QString frame = rawText.mid(22 + padding, 12).trimmed();
++            const int bits = rawText.right(5).trimmed().toShort();
+ 
+-            auto bits = decodedtext.bits();
++            DecodedText decodedtext{ frame, bits, submode };
+ 
+             std::string call = "";
+-            int snr = 0;
+-            int freqOffset = 0;
++            const int snr = (decodedtext.snr() != 0) ? decodedtext.snr() : snrFromLine;
++            int freqOffset = (decodedtext.frequencyOffset() != 0) ? decodedtext.frequencyOffset() : freqOffsetFromLine;
+ 
+-            if (decodedtext.isDirectedMessage()) { // mainwindow.cpp line 5371
++            if (decodedtext.isDirectedMessage()) {
+                 auto parts = decodedtext.directedMessage();
+                 call = parts.at(0).toStdString();
+-                snr = decodedtext.snr();
+-                freqOffset = decodedtext.frequencyOffset();
+             }
+-            else if (decodedtext.isCompound() && !decodedtext.isDirectedMessage()) { // mainwindow.cpp line 5296
++            else if (decodedtext.isCompound() && !decodedtext.isDirectedMessage()) {
+                 call = decodedtext.compoundCall().toStdString();
+-                snr = decodedtext.snr();
+             }
+ 
+             QString qmsg = decodedtext.message();
+-
+             std::string msg = qmsg.toStdString();
+ 
+             screenPrinter->debug("message: " + decodedtext.message().toStdString());
+@@ -458,7 +477,7 @@
+             screenPrinter->debug("isHB: " + std::to_string(isHB));
+             screenPrinter->debug("call: " + call);
+             screenPrinter->debug("snr: " + std::to_string(snr));
+-            screenPrinter->debug("freqOffset: " + std::to_string(decodedtext.frequencyOffset()));
++            screenPrinter->debug("freqOffset: " + std::to_string(freqOffset));
+             screenPrinter->debug("isDirectedMessage: " + std::to_string(decodedtext.isDirectedMessage()));
+             screenPrinter->debug("isCompound: " + std::to_string(decodedtext.isCompound()));
+ 
+@@ -468,7 +487,6 @@
+             }
+ 
+             else if (checkCall(call)) {
+-                // callsign ok
+                 screenPrinter->debug("callsign validation OK for call=" + call);
+             }
+             else {
+@@ -476,7 +494,6 @@
+                 continue;
+             }
+ 
+-            freqOffset = decodedtext.frequencyOffset();
+             int freq = baseFreq + freqOffset;
+ 
+             std::ostringstream s;
+@@ -557,8 +574,8 @@
+             }
+ 
+             // 21 is always a ~ or a +, depending on mode
+-            if (line.at(21) != '~' && line.at(21) != '+') {
+-                screenPrinter->debug("Skipping line because character 21 is not a ~ or +: " + line);
++            if (line.at(21) != '~' && line.at(21) != '+' && line.at(21) != '*') {
++                screenPrinter->debug("Skipping line because character 21 is not a ~, + or *: " + line);
+                 continue;
+             }
+ 
+@@ -943,6 +960,6 @@
+         }
+ 
+         // Let RBN handle messages on its own - no preprocessing/checking, but only FT4/FT8
+-        if ((mode == "FT8" || mode == "FT4") && rbn) {
++        if ((mode == "FT8" || mode == "FT4" || mode == "FT2") && rbn) {
+             rbn->handle(freq, baseFreq, snr, msg, mode);
+         }
