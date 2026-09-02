@@ -178,3 +178,4 @@
 +        if ((mode == "FT8" || mode == "FT4" || mode == "FT2") && rbn) {
              rbn->handle(freq, baseFreq, snr, msg, mode);
          }
+ 
