@@ -1,67 +1,52 @@
 # Experimental FT2 support (this fork only)
 
-This branch is a **local experiment**. It is not a pull request against alexranaldi/CWSL_DIGI.
+Private experiment on `experimental-ft2`. Do **not** open a PR against alexranaldi/CWSL_DIGI.
 
-## How to finish the source changes (no pasting)
+## Decoder choice: option 2 — WSJT-X Improved
 
-Headers are already committed. The remaining hunks are in `experimental-ft2.patch`.
-From a clone of this branch:
+CWSL_DIGI still launches `jt9.exe` from `wsjtx.binpath`.
+
+This branch is set up for **WSJT-X Improved 3.1.0 or later** (DG2YCB).
+Stock official WSJT-X has no FT2. MSHV has FT2 but is not a `jt9.exe`.
+
+1. Install Improved 3.1+ from https://sourceforge.net/projects/wsjt-x-improved/files/
+2. Point CWSL at its `bin` folder, for example:
 
 ```
-git checkout experimental-ft2
-git apply experimental-ft2.patch
+wsjtx.binpath=C:\WSJT\wsjtx_improved\bin
 ```
 
-That updates `source/CWSL_DIGI.cpp`, `source/DecoderPool.hpp`, and `source/OutputHandler.cpp` in one step. You do not copy/paste diffs.
+3. Confirm that folder contains `jt9.exe` from Improved, not stock WSJT-X.
 
-## What this does
+Improved marks FT2 decodes with `*`. This fork accepts `~`, `+`, and `*`.
 
-Adds a decoder mode string `FT2`:
+## What the code does
 
-- T/R period **3.75 s** (16 slots per minute)
+- Mode string `FT2`, T/R period **3.75 s** (16 slots per minute)
 - Timing thread `waitForTimeFT2`
-- Audio capture / queueing like FT4/FT8
-- Output parsing reuses the FT4/FT8 77-bit text parser
-- Also accepts Improved-style decode marker `*`
+- Capture / queueing same path as FT4/FT8
+- jt9 invoked like FT4 (`-5`); shared-memory `nmode=5`, `ntrperiod=4`
+- Output parsing reuses the 77-bit FT4/FT8 parser
 
-## What this does **not** do
+If Improved later adds a dedicated jt9 switch for FT2, change `source/DecoderPool.hpp`.
 
-CWSL_DIGI still calls **jt9.exe** from `wsjtx.binpath`. Stock official WSJT-X jt9 has **no FT2**.
-
-You must point `wsjtx.binpath` at a bin folder whose `jt9.exe` actually decodes FT2:
-
-- **MSHV / Decodium** (same FT2 family as each other)
-- **or** WSJT-X Improved (different waveform — not interoperable with Decodium/MSHV)
-
-Pick **one** dialect. They cannot decode each other.
-
-## Config example
-
-```
-# 20m experimental FT2 (check live QRG; not IARU-standard)
-#decoder=14084000 FT2
-```
-
-Use USB dial frequencies your chosen software actually uses.
-
-## jt9 flags (starting guess)
-
-The code invokes jt9 like FT4 (`-5`) and sets `ntrperiod` to 4 (struct field is an int).
-If your Improved/MSHV jt9 needs a different switch, change `source/DecoderPool.hpp`.
-
-If shared-memory decode fails, set:
+If shared-memory decode fails:
 
 ```
 transfermethod=wavefile
 ```
 
-## Timing
+## Config example
 
-FT2 needs a tight PC clock (±50 ms class). If DT is wild, fix NTP/GPS first.
+```
+# 20m experimental FT2 — confirm live QRG in Improved first
+#decoder=14084000 FT2
+```
 
 Keep `maxdataage` modest; 3.75 s cycles go stale quickly.
+FT2 needs a tight PC clock (±50 ms class).
 
 ## Reporting
 
-PSK Reporter / RBN will receive mode string `FT2` if those outputs are enabled.
-Aggregator/JTAlert may not fully understand FT2.
+PSK Reporter / RBN get mode string `FT2` if those outputs are enabled.
+JTAlert support for FT2 is limited.
