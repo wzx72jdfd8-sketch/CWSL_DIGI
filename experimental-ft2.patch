@@ -170,7 +170,7 @@
                  continue;
              }
  
-@@ -943,7 +943,7 @@
+@@ -943,6 +943,6 @@
          }
  
          // Let RBN handle messages on its own - no preprocessing/checking, but only FT4/FT8
@@ -178,4 +178,3 @@
 +        if ((mode == "FT8" || mode == "FT4" || mode == "FT2") && rbn) {
              rbn->handle(freq, baseFreq, snr, msg, mode);
          }
- 
